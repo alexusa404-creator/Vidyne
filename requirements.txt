@@ -1,0 +1,5 @@
+yt-dlp>=2023.10.13
+openai>=1.0.0
+click>=8.0.0
+colorama>=0.4.6
+requests>=2.31.0
