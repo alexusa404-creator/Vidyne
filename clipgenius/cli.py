@@ -9,6 +9,7 @@ from colorama import init, Fore, Style
 from typing import Optional, List
 from .ai_agent import AIAgent
 from .downloader import VideoDownloader
+from .batch import BatchDownloader
 from .utils import is_valid_url, is_youtube_url
 
 
@@ -22,6 +23,7 @@ class CLIInterface:
     def __init__(self):
         self.ai_agent = AIAgent()
         self.downloader = VideoDownloader()
+        self.batch_downloader = BatchDownloader()
         self.current_url: Optional[str] = None
         self.current_video_info: Optional[dict] = None
     
@@ -126,6 +128,13 @@ class CLIInterface:
         
         # Get custom filename
         custom_name = self.get_user_input("Custom filename? (leave blank for default)")
+        if not custom_name and self.current_video_info:
+            # Suggest filename based on video content
+            suggested = self.batch_downloader.suggest_filename(self.current_video_info)
+            use_suggested = self.get_user_input(f"Use suggested filename '{suggested}'? (yes/no)").lower()
+            if use_suggested.startswith('y'):
+                custom_name = suggested
+        
         preferences['custom_filename'] = custom_name if custom_name else None
         
         return preferences
@@ -266,10 +275,118 @@ class CLIInterface:
         # Perform download
         self.perform_download(preferences)
         return True
+    
+    def run_batch_mode(self, input_source: str, is_webpage: bool = False):
+        """Run batch download mode"""
+        self.print_banner()
+        
+        print(f"{Fore.CYAN}🔄 Batch Download Mode{Style.RESET_ALL}")
+        print("=" * 50)
+        
+        # Extract URLs
+        urls = []
+        if is_webpage:
+            self.print_info(f"Extracting video URLs from webpage: {input_source}")
+            urls = self.batch_downloader.extract_video_urls_from_webpage(input_source)
+        else:
+            # Treat as list of URLs
+            urls = self.batch_downloader.parse_url_list(input_source)
+        
+        if not urls:
+            self.print_error("No valid video URLs found!")
+            return False
+        
+        self.print_success(f"Found {len(urls)} video URLs:")
+        for i, url in enumerate(urls, 1):
+            print(f"  {i}. {url}")
+        print()
+        
+        # Ask for batch preferences
+        print(f"{Fore.YELLOW}📋 Batch Download Preferences{Style.RESET_ALL}")
+        print("=" * 50)
+        
+        batch_prefs = {}
+        batch_prefs['audio_only'] = self.get_user_input("Download all as audio only? (yes/no)").lower().startswith('y')
+        if not batch_prefs['audio_only']:
+            batch_prefs['quality'] = self.get_user_input("Quality for all videos? (best/720p/480p/etc.)") or 'best'
+        batch_prefs['subtitles'] = self.get_user_input("Download subtitles for all? (yes/no)").lower().startswith('y')
+        batch_prefs['thumbnails'] = self.get_user_input("Download thumbnails for all? (yes/no)").lower().startswith('y')
+        
+        confirm = self.get_user_input(f"Proceed with batch download of {len(urls)} videos? (yes/no)").lower()
+        if not confirm.startswith('y'):
+            self.print_info("Batch download cancelled.")
+            return False
+        
+        # Process each URL
+        successful = 0
+        failed = 0
+        
+        for i, url in enumerate(urls, 1):
+            print(f"\n{Fore.CYAN}📹 Processing {i}/{len(urls)}: {url}{Style.RESET_ALL}")
+            print("-" * 60)
+            
+            # Set current URL and analyze
+            if not self.validate_url(url):
+                failed += 1
+                continue
+            
+            if not self.analyze_video():
+                failed += 1
+                continue
+            
+            # Show brief video info
+            if self.current_video_info:
+                title = self.current_video_info.get('title', 'Unknown')[:50]
+                duration = self.current_video_info.get('duration', 0)
+                duration_str = f"{duration//60}m {duration%60}s" if duration else "Unknown"
+                print(f"   Title: {title}")
+                print(f"   Duration: {duration_str}")
+            
+            # Use batch preferences
+            preferences = batch_prefs.copy()
+            
+            # Suggest filename for this video
+            if self.current_video_info:
+                suggested = self.batch_downloader.suggest_filename(self.current_video_info)
+                preferences['custom_filename'] = suggested
+            
+            # Download
+            result = self.downloader.download_video(
+                url=self.current_url,
+                audio_only=preferences.get('audio_only', False),
+                custom_filename=preferences.get('custom_filename')
+            )
+            
+            if result['success']:
+                self.print_success(f"Downloaded: {title[:30]}...")
+                successful += 1
+                
+                # Download additional resources if requested
+                if preferences.get('subtitles'):
+                    sub_result = self.downloader.download_subtitles(self.current_url)
+                    if not sub_result['success']:
+                        self.print_warning("Subtitles failed")
+                
+                if preferences.get('thumbnails'):
+                    thumb_result = self.downloader.download_thumbnail(self.current_url)
+                    if not thumb_result['success']:
+                        self.print_warning("Thumbnail failed")
+            else:
+                self.print_error(f"Failed: {result.get('error', 'Unknown error')}")
+                failed += 1
+        
+        # Summary
+        print(f"\n{Fore.GREEN}🎉 Batch Download Complete!{Style.RESET_ALL}")
+        print("=" * 50)
+        print(f"✅ Successful: {successful}")
+        print(f"❌ Failed: {failed}")
+        print(f"📁 Download location: {self.downloader.download_path}")
+        
+        return successful > 0
 
 
 @click.command()
-@click.argument('url', required=True)
+@click.argument('url', required=False)
 @click.option('--download-path', '-p', default='./downloads', 
               help='Directory to save downloads (default: ./downloads)')
 @click.option('--audio-only', '-a', is_flag=True, 
@@ -278,15 +395,30 @@ class CLIInterface:
               help='Video quality (best/worst/720p/480p/etc.)')
 @click.option('--no-ai', is_flag=True,
               help='Skip AI interactions and use defaults')
-def main(url: str, download_path: str, audio_only: bool, quality: str, no_ai: bool):
+@click.option('--batch', '-b', type=str,
+              help='Batch download: provide file path with URLs or webpage URL')
+@click.option('--batch-webpage', is_flag=True,
+              help='Treat --batch input as webpage to parse for video URLs')
+def main(url: str, download_path: str, audio_only: bool, quality: str, no_ai: bool, 
+         batch: str, batch_webpage: bool):
     """
     ClipGenius - AI-powered video downloader
     
     Download videos from YouTube and other platforms with AI assistance.
     
-    Example: clipgenius https://www.youtube.com/watch?v=abc123
+    Examples:
+    \b
+      clipgenius https://www.youtube.com/watch?v=abc123
+      clipgenius --batch urls.txt
+      clipgenius --batch https://example.com/page --batch-webpage
     """
     try:
+        # Validate arguments
+        if not url and not batch:
+            click.echo("Error: Either URL or --batch option is required.")
+            click.echo("Use 'clipgenius --help' for more information.")
+            sys.exit(1)
+        
         # Create CLI interface
         cli = CLIInterface()
         
@@ -294,6 +426,21 @@ def main(url: str, download_path: str, audio_only: bool, quality: str, no_ai: bo
         if download_path != './downloads':
             cli.downloader.download_path = download_path
             cli.downloader.ensure_directory(download_path)
+        
+        # Handle batch mode
+        if batch:
+            if os.path.isfile(batch):
+                # Read URLs from file
+                with open(batch, 'r', encoding='utf-8') as f:
+                    url_content = f.read()
+                success = cli.run_batch_mode(url_content, is_webpage=False)
+            else:
+                # Treat as webpage URL or direct URL list
+                success = cli.run_batch_mode(batch, is_webpage=batch_webpage)
+            
+            if not success:
+                sys.exit(1)
+            return
         
         if no_ai:
             # Quick download without AI interaction

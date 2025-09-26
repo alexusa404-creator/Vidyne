@@ -11,6 +11,8 @@ AI-powered command-line tool for downloading videos from YouTube and other platf
 - 🎨 **Subtitle & Thumbnail Support**: Download subtitles and thumbnails alongside videos
 - 🔧 **Error Handling**: AI-powered troubleshooting suggestions when downloads fail
 - 🎪 **Interactive CLI**: Beautiful, colorful command-line interface
+- 🔄 **Batch Processing**: Download multiple videos from URL lists or web pages
+- 🏷️ **Smart Filenames**: AI-suggested custom filenames based on video content
 
 ## Installation
 
@@ -91,6 +93,12 @@ clipgenius "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --audio-only
 
 # Custom download directory
 clipgenius "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --download-path ~/Videos
+
+# Batch download from file
+clipgenius --batch urls.txt
+
+# Batch download from webpage (extract video URLs)
+clipgenius --batch "https://example.com/video-page" --batch-webpage
 ```
 
 ### Advanced Options
@@ -160,6 +168,48 @@ $ clipgenius "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --audio-only --no-ai
 📁 Saved to: ./downloads/
 ```
 
+### Example 3: Batch Download from File
+
+Create a file `videos.txt`:
+```
+https://www.youtube.com/watch?v=dQw4w9WgXcQ
+https://www.youtube.com/watch?v=9bZkp7q19f0
+https://youtu.be/jNQXAC9IVRw
+```
+
+Then run:
+```bash
+$ clipgenius --batch videos.txt
+
+🔄 Batch Download Mode
+==================================================
+✅ Found 3 video URLs:
+  1. https://www.youtube.com/watch?v=dQw4w9WgXcQ
+  2. https://www.youtube.com/watch?v=9bZkp7q19f0
+  3. https://youtu.be/jNQXAC9IVRw
+
+📋 Batch Download Preferences
+==================================================
+❓ Download all as audio only? (yes/no) no
+❓ Quality for all videos? (best/720p/480p/etc.) 720p
+❓ Download subtitles for all? (yes/no) yes
+❓ Download thumbnails for all? (yes/no) no
+
+🎉 Batch Download Complete!
+==================================================
+✅ Successful: 3
+❌ Failed: 0
+```
+
+### Example 4: Extract Videos from Webpage
+
+```bash
+$ clipgenius --batch "https://example.com/playlist-page" --batch-webpage
+
+🔍 Extracting video URLs from webpage...
+✅ Found 5 video URLs from the webpage!
+```
+
 ## Supported Platforms
 
 ClipGenius uses yt-dlp under the hood, supporting 1000+ websites including:
@@ -182,6 +232,7 @@ clipgenius/
 ├── cli.py               # Command-line interface and main logic
 ├── ai_agent.py          # AI conversational assistant
 ├── downloader.py        # Video downloading logic (yt-dlp wrapper)
+├── batch.py             # Batch processing and web scraping
 └── utils.py             # Utility functions
 ```
 
@@ -238,3 +289,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) for the robust video downloading backend
 - [OpenAI](https://openai.com/) for the conversational AI capabilities
 - [Click](https://click.palletsprojects.com/) for the command-line interface framework
+- [BeautifulSoup](https://www.crummy.com/software/BeautifulSoup/) for web scraping functionality
