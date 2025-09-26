@@ -1,0 +1,9 @@
+# Example URL list for batch downloading
+# One URL per line, comments starting with # are ignored
+
+https://www.youtube.com/watch?v=dQw4w9WgXcQ
+https://www.youtube.com/watch?v=9bZkp7q19f0
+https://youtu.be/jNQXAC9IVRw
+
+# You can also separate URLs with commas:
+# https://vimeo.com/example1, https://vimeo.com/example2
